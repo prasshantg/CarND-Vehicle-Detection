@@ -27,16 +27,17 @@ from skimage.feature import hog
 from scipy.ndimage.measurements import label
 from sklearn import svm
 from sklearn import grid_search
+from moviepy.editor import VideoFileClip
 
 class VehicleDetect():
     def __init__(self):
-        self.color_space = 'LUV' # Can be RGB, HSV, LUV, HLS, YUV, YCrCb
-        self.orient = 9  # HOG orientations
+        self.color_space = 'YUV' # Can be RGB, HSV, LUV, HLS, YUV, YCrCb
+        self.orient = 18  # HOG orientations
         self.pix_per_cell = 8 # HOG pixels per cell
         self.cell_per_block = 2 # HOG cells per block
         self.hog_channel = "ALL" # Can be 0, 1, 2, or "ALL"
-        self.spatial_size = (32, 32) # Spatial binning dimensions
-        self.hist_bins = 16    # Number of histogram bins
+        self.spatial_size = (16, 16) # Spatial binning dimensions
+        self.hist_bins = 32    # Number of histogram bins
         self.spatial_feat = True # Spatial features on or off
         self.hist_feat = True # Histogram features on or off
         self.hog_feat = True # HOG features on or off
@@ -44,6 +45,9 @@ class VehicleDetect():
         self.X_scaler = None
         self.clf = None
         self.hist_range = (0, 256)
+        self.debug = True
+
+params = VehicleDetect()
 
 def bin_spatial(img, size=(32, 32)):
     color1 = cv2.resize(img[:,:,0], size).ravel()
@@ -231,7 +235,7 @@ def search_windows(img, windows, params):
     #8) Return windows for positive detections
     return on_windows
 
-def find_cars(img, ystart, ystop, scale, params, index):
+def find_cars(img, ystart, ystop, scale, params, index=0):
 
     draw_img = np.copy(img)
     img = img.astype(np.float32)/255
@@ -262,12 +266,12 @@ def find_cars(img, ystart, ystop, scale, params, index):
     hog2, himg2 = get_hog_features(ch2, params.orient, params.pix_per_cell, params.cell_per_block, feature_vec=False, vis=True)
     hog3, himg3 = get_hog_features(ch3, params.orient, params.pix_per_cell, params.cell_per_block, feature_vec=False, vis=True)
 
-    print(himg1.shape)
-    himg11 = np.dstack((himg1, himg2, himg3))*255
-    fig5 = plt.figure()
-    plt.imshow(himg11)
-    plt.title('HOG visualization')
-    fig5.savefig("output_images/hog_visualize_{0}.png".format(index))
+    if params.debug == True:
+        himg11 = np.dstack((himg1, himg2, himg3))*255
+        fig5 = plt.figure()
+        plt.imshow(himg11)
+        plt.title('HOG visualization')
+        fig5.savefig("output_images/hog_visualize_{0}.png".format(index))
 
     spat_feat = bin_spatial(img, size=params.spatial_size)
     hist_feat = color_hist(img, nbins=params.hist_bins)
@@ -339,31 +343,21 @@ def draw_labeled_bboxes(img, labels):
     # Return the image
     return img
 
+def process_video(image):
+    global params
+    params.debug = False
+    ystart = 400
+    ystop = 656
+    scale = 1.5
+
+    out_img, hot_windows = find_cars(image, ystart, ystop, scale, params)
+    return out_img
+
 def search_cars(fname, params, index):
     image = mpimg.imread(fname)
     draw_image = np.copy(image)
 
     image = image.astype(np.float32)/255
-
-    windows = []
-
-    windows1 = slide_window(image, x_start_stop=[None, None], y_start_stop=[400, 600],
-                    xy_window=(64, 64), xy_overlap=(0.5, 0.5))
-    windows2 = slide_window(image, x_start_stop=[None, None], y_start_stop=[500, 720],
-                    xy_window=(128, 128), xy_overlap=(0.5, 0.5))
-
-    for win in windows1:
-        windows.append(win)
-
-    print("Search windows")
-    hot_windows = search_windows(image, windows, params)
-
-    print("Draw boxes")
-    window_img = draw_boxes(draw_image, hot_windows, color=(0, 0, 255), thick=6)                    
-    fig2 = plt.figure()
-    plt.imshow(window_img)
-    fig2.tight_layout()
-    fig2.savefig('output_images/window_search{0}.png'.format(index))
 
     ystart = 400
     ystop = 656
@@ -429,6 +423,9 @@ for im in images:
 images = glob.glob('vehicles/GTI_Right/*.png')
 for im in images:
     cars.append(im)
+#images = glob.glob('vehicles/KITTI_extracted/*.png')
+#for im in images:
+#    cars.append(im)
 
 images = glob.glob('non-vehicles/GTI/*.png')
 for im in images:
@@ -441,8 +438,6 @@ print("Number of cars " + str(len(cars)))
 print("Number of notcars " + str(len(notcars)))
 
 print("Extract features")
-
-params = VehicleDetect()
 
 car_features = extract_features(cars, params)
 notcar_features = extract_features(notcars, params)
@@ -489,7 +484,7 @@ X_train, X_test, y_train, y_test = train_test_split(scaled_X, y, test_size=0.2, 
 #Using GridSearchCV
 print("Grid search SVM params")
 parameters = {'kernel':('linear','rbf'), 'C':[1,10]}
-svr = svm.SVC()
+svr = svm.SVC(cache_size=10000)
 clf = grid_search.GridSearchCV(svr, parameters)
 params.clf = clf
 #access tuned parameters using clf.best_params_
@@ -516,3 +511,8 @@ for index, im in enumerate(images):
     search_cars(im, params, index)
 
 plt.close('all')
+
+project_output = 'project_output.mp4'
+clip1 = VideoFileClip("project_video.mp4")
+project_clip = clip1.fl_image(process_video) #NOTE: this function expects color images!!
+project_clip.write_videofile(project_output, audio=False)
