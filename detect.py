@@ -237,7 +237,7 @@ def search_windows(img, windows, params):
 
 def find_cars(img, ystart, ystop, scale, params, index=0):
 
-    draw_img = np.copy(img)
+    #draw_img = np.copy(img)
     img = img.astype(np.float32)/255
 
     img_tosearch = img[ystart:ystop,:,:]
@@ -267,14 +267,12 @@ def find_cars(img, ystart, ystop, scale, params, index=0):
     hog3, himg3 = get_hog_features(ch3, params.orient, params.pix_per_cell, params.cell_per_block, feature_vec=False, vis=True)
 
     if params.debug == True:
+        print("Debug is on")
         himg11 = np.dstack((himg1, himg2, himg3))*255
         fig5 = plt.figure()
         plt.imshow(himg11)
         plt.title('HOG visualization')
         fig5.savefig("output_images/hog_visualize_{0}.png".format(index))
-
-    spat_feat = bin_spatial(img, size=params.spatial_size)
-    hist_feat = color_hist(img, nbins=params.hist_bins)
 
     bbox_list = []
 
@@ -307,10 +305,11 @@ def find_cars(img, ystart, ystop, scale, params, index=0):
                 xbox_left = np.int(xleft*scale)
                 ytop_draw = np.int(ytop*scale)
                 win_draw = np.int(window*scale)
-                cv2.rectangle(draw_img,(xbox_left, ytop_draw+ystart),(xbox_left+win_draw,ytop_draw+win_draw+ystart),(0,0,255),6)
+                #cv2.rectangle(draw_img,(xbox_left, ytop_draw+ystart),(xbox_left+win_draw,ytop_draw+win_draw+ystart),(0,0,255),6)
                 bbox_list.append(((xbox_left, ytop_draw+ystart),(xbox_left+win_draw,ytop_draw+win_draw+ystart)))
                 
-    return draw_img, bbox_list
+    #return draw_img, bbox_list
+    return img, bbox_list
 
 def add_heat(heatmap, bbox_list):
     # Iterate through list of bboxes
@@ -351,7 +350,21 @@ def process_video(image):
     scale = 1.5
 
     out_img, hot_windows = find_cars(image, ystart, ystop, scale, params)
-    return out_img
+    heat = np.zeros_like(image[:,:,0]).astype(np.float)
+
+    #Add heat to each box in box list
+    heat = add_heat(heat,hot_windows)
+    
+    #Apply threshold to help remove false positives
+    heat = apply_threshold(heat,1)
+
+    #Visualize the heatmap when displaying    
+    heatmap = np.clip(heat, 0, 255)
+
+    #Find final boxes from heatmap using label function
+    labels = label(heatmap)
+    draw_img = draw_labeled_bboxes(np.copy(image), labels)
+    return draw_img
 
 def search_cars(fname, params, index):
     image = mpimg.imread(fname)
@@ -368,10 +381,10 @@ def search_cars(fname, params, index):
     #where is box list from this function?
     print("Find cars using HoG sub-sampling")
     out_img, hot_windows = find_cars(hog_image, ystart, ystop, scale, params, index)
-    fig1 = plt.figure()
-    plt.imshow(out_img)
-    fig1.tight_layout()
-    fig1.savefig('output_images/hog_subsample{0}.png'.format(index))
+    #fig1 = plt.figure()
+    #plt.imshow(out_img)
+    #fig1.tight_layout()
+    #fig1.savefig('output_images/hog_subsample{0}.png'.format(index))
 
     heat = np.zeros_like(image[:,:,0]).astype(np.float)
 
@@ -483,7 +496,7 @@ X_train, X_test, y_train, y_test = train_test_split(scaled_X, y, test_size=0.2, 
 
 #Using GridSearchCV
 print("Grid search SVM params")
-parameters = {'kernel':('linear','rbf'), 'C':[1,10]}
+parameters = {'kernel':('linear','rbf'), 'C':[0.1,1,10], 'gamma':[0.1,1,10]}
 svr = svm.SVC(cache_size=10000)
 clf = grid_search.GridSearchCV(svr, parameters)
 params.clf = clf
@@ -506,9 +519,9 @@ t2 = time.time()
 print(round(t2-t, 5), 'Seconds to predict', n_predict,'labels with SVC')
 
 #Detect vehicles in test images
-images = glob.glob('test_images/*.jpg')
-for index, im in enumerate(images):
-    search_cars(im, params, index)
+#images = glob.glob('test_images/*.jpg')
+#for index, im in enumerate(images):
+#    search_cars(im, params, index)
 
 plt.close('all')
 
