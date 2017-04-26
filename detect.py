@@ -28,6 +28,7 @@ from scipy.ndimage.measurements import label
 from sklearn import svm
 from sklearn import grid_search
 from moviepy.editor import VideoFileClip
+from sklearn.svm import LinearSVC
 
 class VehicleDetect():
     def __init__(self):
@@ -524,8 +525,9 @@ X_train, X_test, y_train, y_test = train_test_split(scaled_X, y, test_size=0.2, 
 #Using GridSearchCV
 print("Grid search SVM params")
 parameters = {'kernel':('linear',), 'C':[0.1,0.5,0.8,1,3,7,10]}
-svr = svm.SVC(cache_size=10000)
-clf = grid_search.GridSearchCV(svr, parameters)
+#svr = svm.SVC(cache_size=10000)
+#clf = grid_search.GridSearchCV(svr, parameters)
+clf = LinearSVC()
 params.clf = clf
 #access tuned parameters using clf.best_params_
 print("Start training")

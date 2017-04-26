@@ -17,11 +17,14 @@ The goals / steps of this project are the following:
 [//]: # (Image References)
 [image1]: ./output_images/car_not_car.png
 [image2]: ./output_images/HOG_example.jpg
-[image3]: ./output_images/sliding_windows.jpg
-[image4]: ./output_images/sliding_window.jpg
-[image5]: ./output_images/bboxes_and_heat.png
-[image6]: ./output_images/labels_map.png
-[image7]: ./output_images/output_bboxes.png
+[image3]: ./output_images/bboxes_and_heat0.png
+[image4]: ./output_images/bboxes_and_heat1.png
+[image5]: ./output_images/bboxes_and_heat2.png
+[image6]: ./output_images/bboxes_and_heat3.png
+[image7]: ./output_images/bboxes_and_heat4.png
+[image8]: ./output_images/bboxes_and_heat5.png
+[image9]: ./output_images/sliding_window0.png
+[image10]: ./output_images/output_bboxes0.png
 [video1]: ./project_output.mp4
 
 ## [Rubric](https://review.udacity.com/#!/rubrics/513/view) Points
@@ -57,16 +60,16 @@ I tried various combinations of parameters and chose orientations equal to 16 as
 
 ####3. Describe how (and identify where in your code) you trained a classifier using your selected HOG features (and color features if you used them).
 
-I used Linear SVM for classification and used GridSearchCV to search best parameters for it. The code for this is at line #537 of file detect.py
+I used Linear SVM for classification. The code for this is at line #537 of file detect.py
 
 ###Sliding Window Search
 
 ####1. Describe how (and identify where in your code) you implemented a sliding window search.  How did you decide what scales to search and how much to overlap windows?
 
 I used sliding window search in find_cars function in detect.py. HoG features were extracted over full image and then used it in sliding window instead
-of get HoG features for each window. I used step of 1 cell instead of overlap property when searching.
+of get HoG features for each window. I used step of 4 cell instead of overlap property when searching.
 
-![alt text][image3]
+![alt text][image9]
 
 ####2. Show some examples of test images to demonstrate how your pipeline is working.  What did you do to optimize the performance of your classifier?
 
@@ -89,17 +92,17 @@ Here's an example result showing the heatmap from a series of frames of video, t
 
 ### Here are six frames and their corresponding heatmaps:
 
+![alt text][image3]
+![alt text][image4]
 ![alt text][image5]
-
-### Here is the output of `scipy.ndimage.measurements.label()` on the integrated heatmap from all six frames:
 ![alt text][image6]
+![alt text][image7]
+![alt text][image8]
+![alt text][image9]
 
 ### Here the resulting bounding boxes are drawn onto the last frame in the series:
-![alt text][image7]
+![alt text][image10]
 
-
-
----
 
 ###Discussion
 
