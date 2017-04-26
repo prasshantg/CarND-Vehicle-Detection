@@ -31,21 +31,22 @@ from moviepy.editor import VideoFileClip
 
 class VehicleDetect():
     def __init__(self):
-        self.color_space = 'YUV' # Can be RGB, HSV, LUV, HLS, YUV, YCrCb
-        self.orient = 18  # HOG orientations
+        self.color_space = 'YCrCb' # Can be RGB, HSV, LUV, HLS, YUV, YCrCb
+        self.orient = 16  # HOG orientations
         self.pix_per_cell = 8 # HOG pixels per cell
         self.cell_per_block = 2 # HOG cells per block
         self.hog_channel = "ALL" # Can be 0, 1, 2, or "ALL"
-        self.spatial_size = (16, 16) # Spatial binning dimensions
-        self.hist_bins = 32    # Number of histogram bins
-        self.spatial_feat = True # Spatial features on or off
+        self.spatial_size = (32, 32) # Spatial binning dimensions
+        self.hist_bins = 64    # Number of histogram bins
+        self.spatial_feat = False # Spatial features on or off
         self.hist_feat = True # Histogram features on or off
         self.hog_feat = True # HOG features on or off
         self.y_start_stop = [400, 656] # Min and max in y to search in slide_window()
         self.X_scaler = None
         self.clf = None
         self.hist_range = (0, 256)
-        self.debug = True
+        self.debug = False
+        self.bboxes = None
 
 params = VehicleDetect()
 
@@ -240,7 +241,7 @@ def find_cars(img, ystart, ystop, scale, params, index=0):
     #draw_img = np.copy(img)
     img = img.astype(np.float32)/255
 
-    img_tosearch = img[ystart:ystop,:,:]
+    img_tosearch = img[ystart:ystop,640:1280,:]
     ctrans_tosearch = convert_color(img_tosearch, params.color_space)
     if scale != 1:
         imshape = ctrans_tosearch.shape
@@ -257,14 +258,14 @@ def find_cars(img, ystart, ystop, scale, params, index=0):
     # 64 was the orginal sampling rate, with 8 cells and 8 pix per cell
     window = 64
     nblocks_per_window = (window // params.pix_per_cell)-1 
-    cells_per_step = 2  # Instead of overlap, define how many cells to step
+    cells_per_step = 1  # Instead of overlap, define how many cells to step
     nxsteps = (nxblocks - nblocks_per_window) // cells_per_step
     nysteps = (nyblocks - nblocks_per_window) // cells_per_step
 
     # Compute individual channel HOG features for the entire image
-    hog1, himg1 = get_hog_features(ch1, params.orient, params.pix_per_cell, params.cell_per_block, feature_vec=False, vis=True)
-    hog2, himg2 = get_hog_features(ch2, params.orient, params.pix_per_cell, params.cell_per_block, feature_vec=False, vis=True)
-    hog3, himg3 = get_hog_features(ch3, params.orient, params.pix_per_cell, params.cell_per_block, feature_vec=False, vis=True)
+    hog1 = get_hog_features(ch1, params.orient, params.pix_per_cell, params.cell_per_block, feature_vec=False, vis=False)
+    hog2 = get_hog_features(ch2, params.orient, params.pix_per_cell, params.cell_per_block, feature_vec=False, vis=False)
+    hog3 = get_hog_features(ch3, params.orient, params.pix_per_cell, params.cell_per_block, feature_vec=False, vis=False)
 
     if params.debug == True:
         print("Debug is on")
@@ -283,8 +284,15 @@ def find_cars(img, ystart, ystop, scale, params, index=0):
             # Extract HOG for this patch
             hog_feat1 = hog1[ypos:ypos+nblocks_per_window, xpos:xpos+nblocks_per_window].ravel() 
             hog_feat2 = hog2[ypos:ypos+nblocks_per_window, xpos:xpos+nblocks_per_window].ravel() 
-            hog_feat3 = hog3[ypos:ypos+nblocks_per_window, xpos:xpos+nblocks_per_window].ravel() 
-            hog_features = np.hstack((hog_feat1, hog_feat2, hog_feat3))
+            hog_feat3 = hog3[ypos:ypos+nblocks_per_window, xpos:xpos+nblocks_per_window].ravel()
+            if params.hog_channel == "ALL":
+                hog_features = np.hstack((hog_feat1, hog_feat2, hog_feat3))
+            if params.hog_channel == 0:
+                hog_features = hog_feat1
+            if params.hog_channel == 1:
+                hog_features = hog_feat2
+            if params.hog_channel == 2:
+                hog_features = hog_feat3
 
             xleft = xpos*params.pix_per_cell
             ytop = ypos*params.pix_per_cell
@@ -293,8 +301,14 @@ def find_cars(img, ystart, ystop, scale, params, index=0):
             subimg = cv2.resize(ctrans_tosearch[ytop:ytop+window, xleft:xleft+window], (64,64))
 
             # Get color features
-            spatial_features = bin_spatial(subimg, size=params.spatial_size)
-            hist_features = color_hist(subimg, nbins=params.hist_bins)
+            if params.spatial_feat == True:
+                spatial_features = bin_spatial(subimg, size=params.spatial_size)
+            else:
+                spatial_features = []
+            if params.hist_feat == True:
+                hist_features = color_hist(subimg, nbins=params.hist_bins)
+            else:
+                hist_features = []
 
             # Scale features and make a prediction
             test_features = params.X_scaler.transform(np.hstack((spatial_features, hist_features, hog_features)).reshape(1, -1))    
@@ -302,7 +316,7 @@ def find_cars(img, ystart, ystop, scale, params, index=0):
             test_prediction = params.clf.predict(test_features)
             
             if test_prediction == 1:
-                xbox_left = np.int(xleft*scale)
+                xbox_left = np.int(xleft*scale) + 640
                 ytop_draw = np.int(ytop*scale)
                 win_draw = np.int(window*scale)
                 #cv2.rectangle(draw_img,(xbox_left, ytop_draw+ystart),(xbox_left+win_draw,ytop_draw+win_draw+ystart),(0,0,255),6)
@@ -344,21 +358,25 @@ def draw_labeled_bboxes(img, labels):
 
 def process_video(image):
     global params
+
     params.debug = False
     ystart = 400
     ystop = 656
     scale = 1.5
 
     out_img, hot_windows = find_cars(image, ystart, ystop, scale, params)
+    params.bboxes.append(hot_windows)
     heat = np.zeros_like(image[:,:,0]).astype(np.float)
 
-    #Add heat to each box in box list
-    heat = add_heat(heat,hot_windows)
-    
-    #Apply threshold to help remove false positives
-    heat = apply_threshold(heat,1)
+    params.bboxes = params.bboxes[-10:]
 
-    #Visualize the heatmap when displaying    
+    #Add heat to each box in box list
+    heat = add_heat(heat, [bbox for sublist in params.bboxes for bbox in sublist])
+
+    #Apply threshold to help remove false positives
+    heat = apply_threshold(heat, 5)
+
+    #Visualize the heatmap when displaying
     heatmap = np.clip(heat, 0, 255)
 
     #Find final boxes from heatmap using label function
@@ -369,6 +387,7 @@ def process_video(image):
 def search_cars(fname, params, index):
     image = mpimg.imread(fname)
     draw_image = np.copy(image)
+    test_image = np.copy(image)
 
     image = image.astype(np.float32)/255
 
@@ -381,10 +400,8 @@ def search_cars(fname, params, index):
     #where is box list from this function?
     print("Find cars using HoG sub-sampling")
     out_img, hot_windows = find_cars(hog_image, ystart, ystop, scale, params, index)
-    #fig1 = plt.figure()
-    #plt.imshow(out_img)
-    #fig1.tight_layout()
-    #fig1.savefig('output_images/hog_subsample{0}.png'.format(index))
+
+    test_image = draw_boxes(test_image, hot_windows)
 
     heat = np.zeros_like(image[:,:,0]).astype(np.float)
 
@@ -400,18 +417,9 @@ def search_cars(fname, params, index):
 
     #Find final boxes from heatmap using label function
     labels = label(heatmap)
-    draw_img = draw_labeled_bboxes(np.copy(image), labels)
+    draw_image = draw_labeled_bboxes(draw_image, labels)
 
-    fig = plt.figure()
-    plt.subplot(121)
-    plt.imshow(draw_img)
-    plt.title('Car Positions')
-    plt.subplot(122)
-    plt.imshow(heatmap, cmap='hot')
-    plt.title('Heat Map')
-    fig.tight_layout()
-    fig.savefig('output_images/heat_map{0}.png'.format(index))
-
+    return heatmap, test_image, labels, draw_image
 
 #Main function start
 
@@ -425,7 +433,7 @@ notcars = []
 print("Read training file names")
 
 images = glob.glob('vehicles/GTI_Far/*.png')
-for im in images:
+for index, im in enumerate(images):
     cars.append(im)
 images = glob.glob('vehicles/GTI_Left/*.png')
 for im in images:
@@ -436,12 +444,13 @@ for im in images:
 images = glob.glob('vehicles/GTI_Right/*.png')
 for im in images:
     cars.append(im)
-#images = glob.glob('vehicles/KITTI_extracted/*.png')
-#for im in images:
-#    cars.append(im)
+images = glob.glob('vehicles/KITTI_extracted/*.png')
+for index, im in enumerate(images):
+    if index < 1500:
+        cars.append(im)
 
 images = glob.glob('non-vehicles/GTI/*.png')
-for im in images:
+for index, im in enumerate(images):
     notcars.append(im)
 
 car_features = []
@@ -467,19 +476,37 @@ scaled_X = X_scaler.transform(X)
 y = np.hstack((np.ones(len(car_features)), np.zeros(len(notcar_features))))
 
 car_ind = np.random.randint(0, len(cars))
+notcar_ind = np.random.randint(0, len(notcars))
+
+car_img = mpimg.imread(cars[car_ind])
+notcar_img = mpimg.imread(notcars[notcar_ind])
+
+f, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
+f.tight_layout()
+ax1.imshow(car_img)
+ax1.set_title('Car')
+ax2.imshow(notcar_img)
+ax2.set_title('Not car')
+f.savefig('output_images/car_notcars.png')
+
 # Plot an example of raw and scaled features
-fig3 = plt.figure(figsize=(12,4))
-plt.subplot(131)
-plt.imshow(mpimg.imread(cars[car_ind]))
-plt.title('Original Image')
-plt.subplot(132)
-plt.plot(X[car_ind])
-plt.title('Raw Features')
-plt.subplot(133)
-plt.plot(scaled_X[car_ind])
-plt.title('Normalized Features')
-fig3.tight_layout()
-fig3.savefig('output_images/features.png')
+f1, (ax1, ax2, ax3, ax4) = plt.subplots(1, 4, figsize=(12,4))
+f1.tight_layout()
+temp, car_hog_img = get_hog_features(car_img[:,:,0],
+                               params.orient, params.pix_per_cell, params.cell_per_block,
+                               vis=True, feature_vec=True)
+ax1.imshow(car_img[:,:,0], cmap='gray')
+ax1.set_title('Car CH-1')
+ax2.imshow(car_hog_img, cmap='gray')
+ax2.set_title('Car CH-1 Hog')
+temp, notcar_hog_img = get_hog_features(notcar_img[:,:,0],
+                               params.orient, params.pix_per_cell, params.cell_per_block,
+                               vis=True, feature_vec=True)
+ax3.imshow(notcar_img[:,:,0], cmap='gray')
+ax3.set_title('not-Car CH-1')
+ax4.imshow(notcar_hog_img, cmap='gray')
+ax4.set_title('not-Car CH-1 Hog')
+f1.savefig('output_images/HOG_example.jpg')
 
 # Split up data into randomized training and test sets
 print("Split training data")
@@ -496,7 +523,7 @@ X_train, X_test, y_train, y_test = train_test_split(scaled_X, y, test_size=0.2, 
 
 #Using GridSearchCV
 print("Grid search SVM params")
-parameters = {'kernel':('linear','rbf'), 'C':[0.1,1,10], 'gamma':[0.1,1,10]}
+parameters = {'kernel':('linear',), 'C':[0.1,0.5,0.8,1,3,7,10]}
 svr = svm.SVC(cache_size=10000)
 clf = grid_search.GridSearchCV(svr, parameters)
 params.clf = clf
@@ -519,13 +546,28 @@ t2 = time.time()
 print(round(t2-t, 5), 'Seconds to predict', n_predict,'labels with SVC')
 
 #Detect vehicles in test images
-#images = glob.glob('test_images/*.jpg')
-#for index, im in enumerate(images):
-#    search_cars(im, params, index)
+images = glob.glob('test_images/*.jpg')
+for index, im in enumerate(images):
+    heatmap, bboxes, labels, draw_img = search_cars(im, params, index)
+
+    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(12,4))
+    ax1.imshow(bboxes)
+    ax1.set_title('Windows')
+    ax2.imshow(heatmap, cmap='hot')
+    ax2.set_title('Heat Map')
+    ax3.imshow(draw_img)
+    ax3.set_title('Boxes')
+    fig.tight_layout()
+    fig.savefig('output_images/bboxes_and_heat{0}.png'.format(index))
+
+    fig, (ax1) = plt.subplots(1, 1, figsize=(12,4))
+    ax1.imshow(draw_img)
+    ax1.set_title('Output')
+    fig.savefig('output_images/output_bboxes{0}.png'.format(index))
 
 plt.close('all')
 
 project_output = 'project_output.mp4'
 clip1 = VideoFileClip("project_video.mp4")
-project_clip = clip1.fl_image(process_video) #NOTE: this function expects color images!!
+project_clip = clip1.fl_image(process_video)
 project_clip.write_videofile(project_output, audio=False)
