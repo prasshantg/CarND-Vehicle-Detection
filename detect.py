@@ -46,7 +46,7 @@ class VehicleDetect():
         self.clf = None
         self.hist_range = (0, 256)
         self.debug = False
-        self.bboxes = None
+        self.bboxes = []
 
 params = VehicleDetect()
 
